@@ -15,6 +15,8 @@
 // ### Generic Dynamic array ###
 //
 
+#define SAFE_CMP(X, Y) ((X > Y) - (X < Y))
+
 #define FS_VEC_INITSIZE 32
 
 #define FS_DECLARE_VEC(T, tag)                                                         \
@@ -61,40 +63,163 @@ static inline T vec_##tag##_pop(Vec_##tag *v)                                   
 	return v->data[--v->size];                                                         \
 }                                                                                      \
 
-// ### Generic Double Ended Queue ###
-//
-
 #ifdef DEBUG
 	#define ASSERT_QUEUE_POP() assert(q->size > 0 && "Popping empty queue!")
 #else
 	#define ASSERT_QUEUE_POP() do {} while (0)
 #endif
 
-#define FS_QUEUE_INITSIZE 32
-
+// ### Generic Double Ended Queue (Linked list implementation) ###
+//
 #define FS_DECLARE_QUEUE(T, tag)                                                       \
                                                                                        \
+typedef struct Queue_##tag##_node                                                      \
+{                                                                                      \
+	struct Queue_##tag##_node	*next;                                                 \
+	struct Queue_##tag##_node	*prev;                                                 \
+	T							val;                                                   \
+}	Queue_##tag##_node;                                                                \
+                                                                                       \
 typedef struct Queue_##tag                                                             \
+{                                                                                      \
+	Queue_##tag##_node 	*head;                                                         \
+	size_t				size;                                                          \
+}	Queue_##tag;                                                                       \
+                                                                                       \
+static inline Queue_##tag *queue_##tag##_init(void)                                    \
+{                                                                                      \
+	return calloc(1, sizeof(Queue_##tag));                                             \
+}                                                                                      \
+                                                                                       \
+static inline void queue_##tag##_push_head(Queue_##tag *q, T val)                      \
+{                                                                                      \
+	Queue_##tag##_node *new = calloc(1, sizeof(*new));                                 \
+                                                                                       \
+	new->val = val;                                                                    \
+	if (q->head == NULL)                                                               \
+	{                                                                                  \
+		new->next = new;                                                               \
+		new->prev = new;                                                               \
+		q->head = new;                                                                 \
+		q->size++;                                                                     \
+		return ;                                                                       \
+	}                                                                                  \
+	Queue_##tag##_node *tmp = q->head->prev;                                           \
+	new->next = q->head;                                                               \
+	q->head->prev = new;                                                               \
+	new->prev = tmp;                                                                   \
+	tmp->next = new;                                                                   \
+	q->head = new;                                                                     \
+	q->size++;                                                                         \
+}                                                                                      \
+                                                                                       \
+static inline void queue_##tag##_push_tail(Queue_##tag *q, T val)                      \
+{                                                                                      \
+	Queue_##tag##_node *new = calloc(1, sizeof(*new));                                 \
+                                                                                       \
+	new->val = val;                                                                    \
+	if (q->head == NULL)                                                               \
+	{                                                                                  \
+		new->next = new;                                                               \
+		new->prev = new;                                                               \
+		q->head = new;                                                                 \
+		q->size++;                                                                     \
+		return ;                                                                       \
+	}                                                                                  \
+	Queue_##tag##_node *tmp = q->head->prev;                                           \
+	new->next = q->head;                                                               \
+	q->head->prev = new;                                                               \
+	new->prev = tmp;                                                                   \
+	tmp->next = new;                                                                   \
+	q->size++;                                                                         \
+}                                                                                      \
+                                                                                       \
+static inline T queue_##tag##_pop_head(Queue_##tag *q)                                 \
+{                                                                                      \
+	ASSERT_QUEUE_POP();                                                                \
+	T out = q->head->val;                                                              \
+                                                                                       \
+	if (q->size <= 1)                                                                  \
+	{                                                                                  \
+		free(q->head);                                                                 \
+		q->head = NULL;                                                                \
+		q->size = 0;                                                                   \
+		return out;                                                                    \
+	}                                                                                  \
+                                                                                       \
+	Queue_##tag##_node *head = q->head;                                                \
+	head->prev->next = head->next;                                                     \
+	head->next->prev = head->prev;                                                     \
+	q->head = head->next;                                                              \
+	free(head);                                                                        \
+	q->size--;                                                                         \
+	return out;                                                                        \
+}                                                                                      \
+                                                                                       \
+static inline T queue_##tag##_pop_tail(Queue_##tag *q)                                 \
+{                                                                                      \
+	ASSERT_QUEUE_POP();                                                                \
+	T out = q->head->prev->val;                                                        \
+                                                                                       \
+	if (q->size <= 1)                                                                  \
+	{                                                                                  \
+		free(q->head);                                                                 \
+		q->head = NULL;                                                                \
+		q->size = 0;                                                                   \
+		return out;                                                                    \
+	}                                                                                  \
+                                                                                       \
+	Queue_##tag##_node *tail = q->head->prev;                                          \
+	tail->next->prev = tail->prev;                                                     \
+	tail->prev->next = tail->next;                                                     \
+	free(tail);                                                                        \
+	q->size--;                                                                         \
+	return out;                                                                        \
+}                                                                                      \
+                                                                                       \
+static inline void queue_##tag##_clear(Queue_##tag *q, void (*del)(T))                 \
+{                                                                                      \
+	if (del != NULL)                                                                   \
+	{                                                                                  \
+		while (q->size > 0)                                                            \
+			del(queue_##tag##_pop_head(q));                                            \
+	}                                                                                  \
+	else                                                                               \
+	{                                                                                  \
+		while (q->size > 0)                                                            \
+			queue_##tag##_pop_head(q);                                                 \
+	}                                                                                  \
+}                                                                                      \
+
+
+
+// ### Generic Double Ended Queue (Array implementation) ###
+//
+
+#define FS_ARRQUEUE_INITSIZE 32
+#define FS_DECLARE_ARRQUEUE(T, tag)                                                    \
+                                                                                       \
+typedef struct ArrQueue_##tag                                                          \
 {                                                                                      \
 	T		*data;                                                                     \
 	ssize_t	head;                                                                      \
 	ssize_t	tail;                                                                      \
 	size_t	size;                                                                      \
 	size_t	capacity;                                                                  \
-}	Queue_##tag;                                                                       \
+}	ArrQueue_##tag;                                                                    \
                                                                                        \
-static inline Queue_##tag *queue_##tag##_init()                                        \
+static inline ArrQueue_##tag *arrqueue_##tag##_init()                                  \
 {                                                                                      \
-	Queue_##tag *queue = calloc(1, sizeof(*queue));                                    \
+	ArrQueue_##tag *q = calloc(1, sizeof(*q));                                         \
                                                                                        \
-	queue->capacity = FS_QUEUE_INITSIZE;                                               \
-	queue->data = calloc(FS_QUEUE_INITSIZE, sizeof(T));                                \
-	queue->head = 1;                                                                   \
-	queue->tail = 0;                                                                   \
-	return queue;                                                                      \
+	q->capacity = FS_ARRQUEUE_INITSIZE;                                                \
+	q->data = calloc(FS_ARRQUEUE_INITSIZE, sizeof(T));                                 \
+	q->head = 1;                                                                       \
+	q->tail = 0;                                                                       \
+	return q;                                                                          \
 }                                                                                      \
                                                                                        \
-static inline void _queue_##tag##_grow(Queue_##tag *q)                                 \
+static inline void _arrqueue_##tag##_grow(ArrQueue_##tag *q)                           \
 {                                                                                      \
 	T *new_data = malloc(q->capacity * 2 * sizeof(T));                                 \
                                                                                        \
@@ -108,27 +233,27 @@ static inline void _queue_##tag##_grow(Queue_##tag *q)                          
 	q->data = new_data;                                                                \
 }                                                                                      \
                                                                                        \
-static inline void queue_##tag##_push_tail(Queue_##tag *q, T val)                      \
+static inline void arrqueue_##tag##_push_tail(ArrQueue_##tag *q, T val)                \
 {                                                                                      \
 	if (q->size >= q->capacity)                                                        \
-		_queue_##tag##_grow(q);                                                        \
+		_arrqueue_##tag##_grow(q);                                                     \
                                                                                        \
     q->tail = (q->tail + 1) % q->capacity;                                             \
 	q->data[q->tail] = val;                                                            \
 	q->size++;                                                                         \
 }                                                                                      \
                                                                                        \
-static inline void queue_##tag##_push_head(Queue_##tag *q, T val)                      \
+static inline void arrqueue_##tag##_push_head(ArrQueue_##tag *q, T val)                \
 {                                                                                      \
 	if (q->size >= q->capacity)                                                        \
-		_queue_##tag##_grow(q);                                                        \
+		_arrqueue_##tag##_grow(q);                                                     \
                                                                                        \
     q->head = (q->head + q->capacity - 1) % q->capacity;                               \
 	q->data[q->head] = val;                                                            \
 	q->size++;                                                                         \
 }                                                                                      \
                                                                                        \
-static inline T queue_##tag##_pop_head(Queue_##tag *q)                                 \
+static inline T arrqueue_##tag##_pop_head(ArrQueue_##tag *q)                           \
 {                                                                                      \
 	ASSERT_QUEUE_POP();                                                                \
 	T out = q->data[q->head];                                                          \
@@ -137,7 +262,7 @@ static inline T queue_##tag##_pop_head(Queue_##tag *q)                          
 	return out;                                                                        \
 }                                                                                      \
                                                                                        \
-static inline T queue_##tag##_pop_tail(Queue_##tag *q)                                 \
+static inline T arrqueue_##tag##_pop_tail(ArrQueue_##tag *q)                           \
 {                                                                                      \
 	ASSERT_QUEUE_POP();                                                                \
 	T out = q->data[q->tail];                                                          \
@@ -146,7 +271,7 @@ static inline T queue_##tag##_pop_tail(Queue_##tag *q)                          
 	return out;                                                                        \
 }                                                                                      \
                                                                                        \
-static inline void queue_##tag##_free(Queue_##tag *q, void (*del)(T))                  \
+static inline void arrqueue_##tag##_free(ArrQueue_##tag *q, void (*del)(T))            \
 {                                                                                      \
 	if (del != NULL && q->size > 0)                                                    \
 	{                                                                                  \
@@ -185,10 +310,13 @@ static inline int bstset_##tag##_insert(BSTSet_##tag *set, T val)               
 {                                                                                      \
 	BSTSet_##tag##_node *current = set->tree;                                          \
 	BSTSet_##tag##_node **addr = &set->tree;                                           \
+	int (*cmpf)(T, T) = (int (*)(T, T))cmp;                                            \
                                                                                        \
 	while (current != NULL)                                                            \
 	{                                                                                  \
-		int diff = (cmp == NULL) ? val - current->val : cmp(val, current->val);        \
+		int diff = (cmpf == NULL)                                                      \
+			? SAFE_CMP(val, current->val)                                              \
+			: cmpf(val, current->val);                                                 \
 		if (diff > 0)                                                                  \
 			addr = &current->right;                                                    \
 		else if (diff < 0)                                                             \
@@ -212,7 +340,8 @@ static inline BSTSet_##tag##_node *_bstset_##tag##_remove_r(                    
 	if (node == NULL)                                                                  \
 		return node;                                                                   \
                                                                                        \
-	int diff = (cmp == NULL) ? val - node->val : cmp(val, node->val);                  \
+	int (*cmpf)(T, T) = (int (*)(T, T))cmp;                                            \
+	int diff = (cmpf == NULL) ? SAFE_CMP(val, node->val) : cmpf(val, node->val);       \
 	if (diff < 0)                                                                      \
 		node->left = _bstset_##tag##_remove_r(node->left, val, del);                   \
 	else if (diff > 0)                                                                 \
@@ -252,10 +381,13 @@ static inline void bstset_##tag##_remove(BSTSet_##tag *set, T val, void (*del)(T
 static inline int bstset_##tag##_contains(BSTSet_##tag *set, T val)                    \
 {                                                                                      \
 	BSTSet_##tag##_node *current = set->tree;                                          \
+	int (*cmpf)(T, T) = (int (*)(T, T))cmp;                                            \
                                                                                        \
 	while (current != NULL)                                                            \
 	{                                                                                  \
-		int diff = (cmp == NULL) ? val - current->val : cmp(val, current->val);        \
+		int diff = (cmpf == NULL)                                                      \
+			? SAFE_CMP(val, current->val)                                              \
+			: cmpf(val, current->val);                                                 \
 		if (diff > 0)                                                                  \
 			current = current->right;                                                  \
 		else if (diff < 0)                                                             \
