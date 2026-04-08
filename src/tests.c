@@ -158,16 +158,21 @@ void	test_bstset_str(int argc, char **argv)
 	printf("\e[3%dmSet contains:\e[m %s\n", 1 + bstset_str_contains(&set, "bob"), "bob");
 
 	print_sep();
+	bstset_str_print_rb(&set);
 	printf("\e[31mRemoving from set:\e[m %s\n", "old");
 	bstset_str_remove(&set, "old", (void (*)(char *))free);
+	bstset_str_print_rb(&set);
 	printf("\e[31mRemoving from set:\e[m %s\n", "27");
 	bstset_str_remove(&set, "27", (void (*)(char *))free);
+	bstset_str_print_rb(&set);
 	printf("\e[31mRemoving from set:\e[m %s\n", "smyth");
 	bstset_str_remove(&set, "smyth", (void (*)(char *))free);
+	bstset_str_print_rb(&set);
 	for (int i = 0; i < argc; i++)
 	{
 		printf("\e[3%dmSet contains:\e[m %s\n", 1 + bstset_str_contains(&set, argv[i]), argv[i]);
 	}
+
 
 	bstset_str_clear(&set, (void (*)(char *))free);
 }
@@ -187,15 +192,31 @@ void test_bstset_int(void)
 
 	srand(time(NULL));
 	print_header("Testing BSTSet_int");
-	for (int i = 0; i < 40; i++)
+	bool passed = true;
+	for (int i = 0; i < 1000000; i++)
 	{
-		int num = rand();
-		printf("\e[32mInserting:\e[m %d\n", num);
-		bstset_int_insert(&set, num);
+		int num = rand() % 1000;
+		if (rand() % 2)
+		{
+			if (!bstset_int_insert(&set, num))
+				printf("\e[32mInserting:\e[m %d\n", num);
+		}
+		else
+		{
+			if (!bstset_int_remove(&set, num, NULL))
+				printf("\e[31mDeleting:\e[m  %d\n", num);
+		}
+		if (!bstset_int_validate(&set))
+		{
+			passed = false;
+			break ;
+		}
 	}
 
-	print_sep();
-	print_bstset_int(set.tree);
+	printf("%s\n", passed ? "\e[32;1mTEST PASSED\e[m" : "\e[31;1mTEST FAILED\e[m");
+	printf("size: %ld\n", set.size);
+	// print_sep();
+	// _bstset_int_print(set.tree, 0);
 	bstset_int_clear(&set, NULL);
 }
 
@@ -223,103 +244,6 @@ void test_queue_int(void)
 	queue_int_clear(&q, NULL);
 }
 
-// void	draw_bstset_int_r(BSTSet_int_node *node, int inv_depth, int x, int y, Vec_str *canvas)
-// {
-// 	if (node == NULL)
-// 		return ;
-// 	canvas->data[y][x] = (node->col == RBT_RED) ? 'R' : 'B';
-// 	int	x_diff = 3;
-// 	int	y_diff = 2;
-// 	for (int i = 1; i < inv_depth; i++)
-// 	{
-// 		x_diff *= 2;
-// 		y_diff *= 2;
-// 	}
-// 	if (node->right != NULL)
-// 	{
-// 		for (int i = 1; i < x_diff; i++)
-// 			canvas->data[y][x + i] = '-';
-// 		draw_bstset_int_r(node->right, inv_depth - 1, x + x_diff, y, canvas);
-// 	}
-// 	if (node->left != NULL)
-// 	{
-// 		for (int i = 1; i < y_diff; i++)
-// 			canvas->data[y + i][x] = '|';
-// 		draw_bstset_int_r(node->left, inv_depth - 1, x, y + y_diff, canvas);
-// 	}
-// }
-
-// Vec_str	*draw_bstset_int(BSTSet_int *set)
-// {
-// 	Vec_str *canvas = vec_str_init();
-//
-// 	int max_depth = _bstset_int_depth(set);
-// 	printf("depth: %d\n", max_depth);
-//
-// 	int width = 1;
-// 	int height = 1;
-// 	int scale_x = 3;
-// 	int scale_y = 2;
-// 	for (int i = 1; i <= max_depth; i++)
-// 	{
-// 		width += scale_x;
-// 		height += scale_y;
-// 		scale_x *= 2;
-// 		scale_y *= 2;
-// 	}
-//
-// 	for (int i = 0; i < height; i++)
-// 	{
-// 		vec_str_push(canvas, calloc(width + 1, sizeof(char)));
-// 		memset(canvas->data[i], ' ', width);
-// 		// printf("<%s>\n", canvas->data[i]);
-// 	}
-// 	printf("width: %d\nheight: %d\n", width, height);
-//
-// 	draw_bstset_int_r(set->tree, max_depth, 0, 0, canvas);
-//
-// 	size_t i = 0;
-// 	for (; i < canvas->size; i++)
-// 	{
-// 		int j = width - 1;
-// 		for (; j >= 0 && canvas->data[i][j] == ' '; j--)
-// 			canvas->data[i][j] = '\0';
-// 		if (j == -1)
-// 		{
-// 			size_t size = canvas->size;
-// 			while (i < size)
-// 			{
-// 				free(vec_str_pop(canvas));
-// 				i++;
-// 			}
-// 			break ;
-// 		}
-// 	}
-//
-// 	return canvas;
-// }
-
-// void	print_rb_tree(BSTSet_int *set)
-// {
-// 	Vec_str *canvas = draw_bstset_int(set);
-//
-// 	for (size_t i = 0; i < canvas->size; i++)
-// 	{
-// 		for (int j = 0; canvas->data[i][j]; j++)
-// 		{
-// 			char c = canvas->data[i][j];
-// 			if (c == 'R')
-// 				printf("\e[41;30mR\e[m");
-// 			else if (c == 'B')
-// 				printf("\e[47;30mR\e[m");
-// 			else
-// 				printf("%c", c);
-// 		}
-// 		printf("\n");
-// 	}
-// 	vec_str_free(canvas, (void (*)(char *))free);
-// }
-
 void	test_print_rb_tree(void)
 {
 	BSTSet_int set = {};
@@ -328,11 +252,11 @@ void	test_print_rb_tree(void)
 
 	srand(time(NULL));
 	printf("\e[?25l");
-	for (int i = 0; i < 150; i++)
+	for (int i = 0; i < 500; i++)
 	{
 		int num = rand();
 		// printf("\e[32mInserting:\e[m %d\n", num);
-		bstset_int_insert(&set, num);
+		bstset_int_insert(&set, num % 1000);
 		// printf("\e[2J\e[H");
 		// bstset_int_print_rb(&set);
 		// getchar();
@@ -340,10 +264,22 @@ void	test_print_rb_tree(void)
 	printf("\e[?25h");
 
 	bstset_int_print_rb(&set);
+	printf("size: %ld\n", set.size);
+	for (int i = 0; i < 5; i++)
+	{
+		// print_sep();
+		bstset_int_remove(&set, i, NULL);
+		// bstset_int_print_rb(&set);
+	}
 	// printf("max_depth: %d\n", _bstset_int_depth(&set));
+	print_sep();
+	_bstset_int_print(set.tree, 0);
+	printf("size: %ld\n", set.size);
 
 	bstset_int_clear(&set, NULL);
 }
+
+FS_DECLARE_BSTMAP(char *, int, strint, strcmp);
 
 int main(int argc, char **argv)
 {
@@ -354,7 +290,7 @@ int main(int argc, char **argv)
 	// test_arrqueue_int();
 	// test_arrqueue_str(argc, argv);
 	// test_bstset_str(argc, argv);
-	// test_bstset_int();
+	test_bstset_int();
 	// test_queue_int();
-	test_print_rb_tree();
+	// test_print_rb_tree();
 }

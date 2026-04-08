@@ -308,8 +308,8 @@ typedef struct BSTSet_##tag                                                     
 	size_t				size;                                                          \
 }	BSTSet_##tag;                                                                      \
                                                                                        \
-static inline void _bstset_##tag##_depth_r(BSTSet_##tag##_node *node,                  \
-												int depth, int *max)                   \
+static void _bstset_##tag##_depth_r(BSTSet_##tag##_node *node,                         \
+									int depth, int *max)                               \
 {                                                                                      \
 	if (node == NULL)                                                                  \
 		return ;                                                                       \
@@ -327,11 +327,11 @@ static inline int _bstset_##tag##_depth(BSTSet_##tag *set)                      
 	return depth;                                                                      \
 }                                                                                      \
                                                                                        \
-void	draw_bstset_##tag##_r(BSTSet_##tag##_node *node, int inv_depth, int x, int y, Vec_str *canvas)\
+static void	draw_bstset_##tag##_r(BSTSet_##tag##_node *node, int inv_depth, int x, int y, Vec_str *canvas)\
 {                                                                                      \
 	if (node == NULL)                                                                  \
 		return ;                                                                       \
-	canvas->data[y][x] = (node->col == RBT_RED) ? 'R' : 'B';                           \
+	canvas->data[y][x] = (node->col == RBT_BLACK) ? 'B' : 'R';                         \
 	int	x_diff = 2;                                                                    \
 	int	y_diff = 1;                                                                    \
 	for (int i = 1; i < inv_depth; i++)                                                \
@@ -400,6 +400,59 @@ Vec_str	*draw_bstset_##tag(BSTSet_##tag *set)                                   
 	return canvas;                                                                     \
 }                                                                                      \
                                                                                        \
+static int _bstset_##tag##_validate_r(BSTSet_##tag##_node *node)                       \
+{                                                                                      \
+	if (node == NULL)                                                                  \
+		return 1;                                                                      \
+                                                                                       \
+	if (node->col == RBT_RED)                                                          \
+	{                                                                                  \
+		if ((node->left != NULL && node->left->col == RBT_RED)                         \
+			|| (node->right != NULL && node->right->col == RBT_RED))                   \
+		{                                                                              \
+			dprintf(2, "RBT violation: multiple red nodes in a row\n");                \
+			return -1;                                                                 \
+		}                                                                              \
+	}                                                                                  \
+                                                                                       \
+	int left_height = _bstset_##tag##_validate_r(node->left);                          \
+	int right_height = _bstset_##tag##_validate_r(node->right);                        \
+                                                                                       \
+	if (left_height == -1 || right_height == -1                                        \
+		|| (left_height != right_height                                                \
+		&& dprintf(2, "RBT violation: black height mismatch\n"))                       \
+	)                                                                                  \
+		return -1;                                                                     \
+                                                                                       \
+	return (node->col == RBT_BLACK) ? left_height + 1 : left_height;                   \
+}                                                                                      \
+                                                                                       \
+static inline bool bstset_##tag##_validate(BSTSet_##tag *set)                          \
+{                                                                                      \
+	if (set->tree == NULL)                                                             \
+		return true;                                                                   \
+                                                                                       \
+	if (set->tree->col != RBT_BLACK)                                                   \
+	{                                                                                  \
+		dprintf(2, "RBT violation: root node is not black\n");                         \
+		return false;                                                                  \
+	}                                                                                  \
+	                                                                                   \
+	return (_bstset_##tag##_validate_r(set->tree) != -1);                              \
+}                                                                                      \
+                                                                                       \
+static void _bstset_##tag##_print(BSTSet_##tag##_node *node, int space)                \
+{                                                                                      \
+    if (node == NULL) return;                                                          \
+    space += 8;                                                                        \
+    _bstset_##tag##_print(node->right, space);                                         \
+	int i;                                                                             \
+    for (i = 8; i < space - 6; i++) printf(" ");                                       \
+    for (; i < space; i++) printf("-");                                                \
+    printf("%s%3d\e[m\n", node->col == RBT_RED ? "\e[41;30m" : "\e[47;30m", node->val);\
+    _bstset_##tag##_print(node->left, space);                                          \
+}                                                                                      \
+                                                                                       \
 void	bstset_##tag##_print_rb(BSTSet_##tag *set)                                     \
 {                                                                                      \
 	Vec_str *canvas = draw_bstset_##tag(set);                                          \
@@ -410,9 +463,9 @@ void	bstset_##tag##_print_rb(BSTSet_##tag *set)                                 
 		{                                                                              \
 			char c = canvas->data[i][j];                                               \
 			if (c == 'R')                                                              \
-				printf("\e[41;30mR\e[m");                                              \
+				printf("\e[41;30m%c\e[m", c);                                          \
 			else if (c == 'B')                                                         \
-				printf("\e[47;30mR\e[m");                                              \
+				printf("\e[47;30m%c\e[m", c);                                          \
 			else                                                                       \
 				printf("%c", c);                                                       \
 		}                                                                              \
@@ -426,6 +479,27 @@ static inline BSTSet_##tag *bstset_##tag##_init()                               
 	BSTSet_##tag *set = calloc(1, sizeof(*set));                                       \
                                                                                        \
 	return set;                                                                        \
+}                                                                                      \
+                                                                                       \
+static inline BSTSet_##tag##_node *_bstset_##tag##_min(BSTSet_##tag##_node *node)      \
+{                                                                                      \
+	while (node->left != NULL)                                                         \
+		node = node->left;                                                             \
+	return node;                                                                       \
+}                                                                                      \
+                                                                                       \
+static inline void _bstset_##tag##_transplant(BSTSet_##tag *set,                       \
+												BSTSet_##tag##_node *dead,             \
+												BSTSet_##tag##_node *node)             \
+{                                                                                      \
+	if (dead->parent == NULL)                                                          \
+		set->tree = node;                                                              \
+	else if (dead == dead->parent->left)                                               \
+		dead->parent->left = node;                                                     \
+	else                                                                               \
+		dead->parent->right = node;                                                    \
+	if (node != NULL)                                                                  \
+		node->parent = dead->parent;                                                   \
 }                                                                                      \
                                                                                        \
 static inline void _bstset_##tag##_rotate_left(BSTSet_##tag *set,                      \
@@ -570,49 +644,184 @@ static inline int bstset_##tag##_insert(BSTSet_##tag *set, T val)               
 	return 0;                                                                          \
 }                                                                                      \
                                                                                        \
-static inline BSTSet_##tag##_node *_bstset_##tag##_remove_r(                           \
-									BSTSet_##tag##_node *node,                         \
-									T val, void (*del)(T))                             \
+static inline void _bstset_##tag##_remove_fix(BSTSet_##tag *set,                       \
+												BSTSet_##tag##_node *node,             \
+												BSTSet_##tag##_node *parent)           \
 {                                                                                      \
-	if (node == NULL)                                                                  \
-		return node;                                                                   \
-                                                                                       \
-	int (*cmpf)(T, T) = (int (*)(T, T))cmp;                                            \
-	int diff = (cmpf == NULL) ? SAFE_CMP(val, node->val) : cmpf(val, node->val);       \
-	if (diff < 0)                                                                      \
-		node->left = _bstset_##tag##_remove_r(node->left, val, del);                   \
-	else if (diff > 0)                                                                 \
-		node->right = _bstset_##tag##_remove_r(node->right, val, del);                 \
-	else                                                                               \
+	while (node != set->tree && (node == NULL || node->col == RBT_BLACK))              \
 	{                                                                                  \
-		if (node->left == NULL)                                                        \
+		if (node == parent->left)                                                      \
 		{                                                                              \
-			BSTSet_##tag##_node *tmp = node->right;                                    \
-			if (del != NULL)                                                           \
-				del(node->val);                                                        \
-			free(node);                                                                \
-			return tmp;                                                                \
+			BSTSet_##tag##_node *sibling = parent->right;                              \
+			if (sibling == NULL)                                                       \
+			{                                                                          \
+				node = parent;                                                         \
+				parent = node->parent;                                                 \
+				continue ;                                                             \
+			}                                                                          \
+			if (sibling->col == RBT_RED)                                               \
+			{                                                                          \
+				sibling->col = RBT_BLACK;                                              \
+				parent->col = RBT_RED;                                                 \
+				_bstset_##tag##_rotate_left(set, parent);                              \
+				sibling = parent->right;                                               \
+				if (sibling == NULL)                                                   \
+				{                                                                      \
+					node = parent;                                                     \
+					parent = node->parent;                                             \
+					continue ;                                                         \
+				}                                                                      \
+			}                                                                          \
+                                                                                       \
+			bool left_black = sibling->left == NULL || sibling->left->col == RBT_BLACK;\
+			bool right_black = sibling->right == NULL || sibling->right->col == RBT_BLACK;\
+                                                                                       \
+			if (left_black && right_black)                                             \
+			{                                                                          \
+				sibling->col = RBT_RED;                                                \
+				node = parent;                                                         \
+				parent = node->parent;                                                 \
+			}                                                                          \
+			else                                                                       \
+			{                                                                          \
+				if (right_black)                                                       \
+				{                                                                      \
+					if (sibling->left != NULL)                                         \
+						sibling->left->col = RBT_BLACK;                                \
+					sibling->col = RBT_RED;                                            \
+					_bstset_##tag##_rotate_right(set, sibling);                        \
+					sibling = parent->right;                                           \
+				}                                                                      \
+				sibling->col = parent->col;                                            \
+				parent->col = RBT_BLACK;                                               \
+				if (sibling->right != NULL)                                            \
+					sibling->right->col = RBT_BLACK;                                   \
+				_bstset_##tag##_rotate_left(set, parent);                              \
+				node = set->tree;                                                      \
+			}                                                                          \
 		}                                                                              \
-		if (node->right == NULL)                                                       \
+		else                                                                           \
 		{                                                                              \
-			BSTSet_##tag##_node *tmp = node->left;                                     \
-			if (del != NULL)                                                           \
-				del(node->val);                                                        \
-			free(node);                                                                \
-			return tmp;                                                                \
+			BSTSet_##tag##_node *sibling = parent->left;                               \
+			if (sibling == NULL)                                                       \
+			{                                                                          \
+				node = parent;                                                         \
+				parent = node->parent;                                                 \
+				continue ;                                                             \
+			}                                                                          \
+			if (sibling->col == RBT_RED)                                               \
+			{                                                                          \
+				sibling->col = RBT_BLACK;                                              \
+				parent->col = RBT_RED;                                                 \
+				_bstset_##tag##_rotate_right(set, parent);                             \
+				sibling = parent->left;                                                \
+				if (sibling == NULL)                                                   \
+				{                                                                      \
+					node = parent;                                                     \
+					parent = node->parent;                                             \
+					continue ;                                                         \
+				}                                                                      \
+			}                                                                          \
+                                                                                       \
+			bool left_black = sibling->left == NULL || sibling->left->col == RBT_BLACK;\
+			bool right_black = sibling->right == NULL || sibling->right->col == RBT_BLACK;\
+                                                                                       \
+			if (left_black && right_black)                                             \
+			{                                                                          \
+				sibling->col = RBT_RED;                                                \
+				node = parent;                                                         \
+				parent = node->parent;                                                 \
+			}                                                                          \
+			else                                                                       \
+			{                                                                          \
+				if (left_black)                                                        \
+				{                                                                      \
+					if (sibling->right != NULL)                                        \
+						sibling->right->col = RBT_BLACK;                               \
+					sibling->col = RBT_RED;                                            \
+					_bstset_##tag##_rotate_left(set, sibling);                         \
+					sibling = parent->left;                                            \
+				}                                                                      \
+				sibling->col = parent->col;                                            \
+				parent->col = RBT_BLACK;                                               \
+				if (sibling->left != NULL)                                             \
+					sibling->left->col = RBT_BLACK;                                    \
+				_bstset_##tag##_rotate_right(set, parent);                             \
+				node = set->tree;                                                      \
+			}                                                                          \
 		}                                                                              \
-		BSTSet_##tag##_node *min = node->right;                                        \
-		while (min->left != NULL)                                                      \
-			min = min->left;                                                           \
-		node->val = min->val;                                                          \
-		node->right = _bstset_##tag##_remove_r(node->right, min->val, del);            \
 	}                                                                                  \
-	return node;                                                                       \
+	if (node != NULL)                                                                  \
+		node->col = RBT_BLACK;                                                         \
 }                                                                                      \
                                                                                        \
-static inline void bstset_##tag##_remove(BSTSet_##tag *set, T val, void (*del)(T))     \
+static inline int bstset_##tag##_remove(BSTSet_##tag *set, T val, void (*del)(T))      \
 {                                                                                      \
-	set->tree = _bstset_##tag##_remove_r(set->tree, val, del);                         \
+	BSTSet_##tag##_node *target = set->tree;                                           \
+	int (*cmpf)(T, T) = (int (*)(T, T))cmp;                                            \
+	while (target != NULL)                                                             \
+	{                                                                                  \
+		int diff = (cmpf == NULL)                                                      \
+			? SAFE_CMP(val, target->val)                                               \
+			: cmpf(val, target->val);                                                  \
+		if (diff == 0)                                                                 \
+			break ;                                                                    \
+		target = diff < 0 ? target->left : target->right;                              \
+	}                                                                                  \
+	if (target == NULL)                                                                \
+		return 1;                                                                      \
+                                                                                       \
+	BSTSet_##tag##_node *replacement = NULL;                                           \
+	BSTSet_##tag##_node *to_fix = NULL;                                                \
+	BSTSet_##tag##_node *fix_parent;                                                   \
+	RBTColor orig_col = target->col;                                                   \
+                                                                                       \
+	if (target->left == NULL)                                                          \
+	{                                                                                  \
+		to_fix = target->right;                                                        \
+		fix_parent = target->parent;                                                   \
+		_bstset_##tag##_transplant(set, target, target->right);                        \
+	}                                                                                  \
+	else if (target->right == NULL)                                                    \
+	{                                                                                  \
+		to_fix = target->left;                                                         \
+		fix_parent = target->parent;                                                   \
+		_bstset_##tag##_transplant(set, target, target->left);                         \
+	}                                                                                  \
+	else                                                                               \
+	{                                                                                  \
+		replacement = _bstset_##tag##_min(target->right);                              \
+		orig_col = replacement->col;                                                   \
+		to_fix = replacement->right;                                                   \
+                                                                                       \
+		if (replacement->parent == target)                                             \
+		{                                                                              \
+			fix_parent = replacement;                                                  \
+		}                                                                              \
+		else                                                                           \
+		{                                                                              \
+			fix_parent = replacement->parent;                                          \
+			_bstset_##tag##_transplant(set, replacement, replacement->right);          \
+			replacement->right = target->right;                                        \
+			replacement->right->parent = replacement;                                  \
+		}                                                                              \
+		_bstset_##tag##_transplant(set, target, replacement);                          \
+		replacement->left = target->left;                                              \
+		replacement->left->parent = replacement;                                       \
+		replacement->col = target->col;                                                \
+	}                                                                                  \
+                                                                                       \
+	if (orig_col == RBT_BLACK)                                                         \
+		_bstset_##tag##_remove_fix(set, to_fix, fix_parent);                           \
+                                                                                       \
+	if (set->tree != NULL)                                                             \
+		set->tree->col = RBT_BLACK;                                                    \
+                                                                                       \
+    if (del != NULL)                                                                   \
+		del(target->val);                                                              \
+	free(target);                                                                      \
+	set->size--;                                                                       \
+	return 0;                                                                          \
 }                                                                                      \
                                                                                        \
 static inline int bstset_##tag##_contains(BSTSet_##tag *set, T val)                    \
@@ -636,7 +845,7 @@ static inline int bstset_##tag##_contains(BSTSet_##tag *set, T val)             
 	return false;                                                                      \
 }                                                                                      \
                                                                                        \
-static inline void _bstset_##tag##_clear_r(BSTSet_##tag##_node *node, void (*del)(T))  \
+static void _bstset_##tag##_clear_r(BSTSet_##tag##_node *node, void (*del)(T))         \
 {                                                                                      \
 	if (node == NULL)                                                                  \
 		return ;                                                                       \
@@ -653,6 +862,601 @@ static inline void bstset_##tag##_clear(BSTSet_##tag *set, void (*del)(T))      
 	set->tree = NULL;                                                                  \
 	set->size = 0;                                                                     \
 }                                                                                      \
+
+
+// ### Generic BSTMap ###
+//
+
+#define FS_DECLARE_BSTMAP(K, V, tag, cmp)                                              \
+                                                                                       \
+                                                                                       \
+typedef struct BSTMap_##tag##_node                                                     \
+{                                                                                      \
+	K							key;                                                   \
+	V							val;                                                   \
+	RBTColor					col;                                                   \
+	struct BSTMap_##tag##_node	*left;                                                 \
+	struct BSTMap_##tag##_node	*right;                                                \
+	struct BSTMap_##tag##_node	*parent;                                               \
+}	BSTMap_##tag##_node;                                                               \
+                                                                                       \
+typedef struct BSTMap_##tag                                                            \
+{                                                                                      \
+	BSTMap_##tag##_node	*tree;                                                         \
+	size_t				size;                                                          \
+}	BSTMap_##tag;                                                                      \
+                                                                                       \
+static void _bstmap_##tag##_depth_r(BSTMap_##tag##_node *node,                         \
+									int depth, int *max)                               \
+{                                                                                      \
+	if (node == NULL)                                                                  \
+		return ;                                                                       \
+	if (depth > *max)                                                                  \
+		*max = depth;                                                                  \
+	_bstmap_##tag##_depth_r(node->left, depth + 1, max);                               \
+	_bstmap_##tag##_depth_r(node->right, depth + 1, max);                              \
+}                                                                                      \
+                                                                                       \
+static inline int _bstmap_##tag##_depth(BSTMap_##tag *map)                             \
+{                                                                                      \
+	int depth = 0;                                                                     \
+                                                                                       \
+	_bstmap_##tag##_depth_r(map->tree, 0, &depth);                                     \
+	return depth;                                                                      \
+}                                                                                      \
+                                                                                       \
+static void	draw_bstmap_##tag##_r(BSTMap_##tag##_node *node, int inv_depth, int x, int y, Vec_str *canvas)\
+{                                                                                      \
+	if (node == NULL)                                                                  \
+		return ;                                                                       \
+	canvas->data[y][x] = (node->col == RBT_BLACK) ? 'B' : 'R';                         \
+	int	x_diff = 2;                                                                    \
+	int	y_diff = 1;                                                                    \
+	for (int i = 1; i < inv_depth; i++)                                                \
+	{                                                                                  \
+		x_diff *= 2;                                                                   \
+		y_diff *= 2;                                                                   \
+	}                                                                                  \
+	if (node->right != NULL)                                                           \
+	{                                                                                  \
+		for (int i = 1; i < x_diff; i++)                                               \
+			canvas->data[y][x + i] = '-';                                              \
+		draw_bstmap_##tag##_r(node->right, inv_depth - 1, x + x_diff, y, canvas);      \
+	}                                                                                  \
+	if (node->left != NULL)                                                            \
+	{                                                                                  \
+		for (int i = 1; i < y_diff; i++)                                               \
+			canvas->data[y + i][x] = '|';                                              \
+		draw_bstmap_##tag##_r(node->left, inv_depth - 1, x, y + y_diff, canvas);       \
+	}                                                                                  \
+}                                                                                      \
+                                                                                       \
+Vec_str	*draw_bstmap_##tag(BSTMap_##tag *map)                                          \
+{                                                                                      \
+	Vec_str *canvas = vec_str_init();                                                  \
+                                                                                       \
+	int max_depth = _bstmap_##tag##_depth(map);                                        \
+	int width = 1;                                                                     \
+	int height = 1;                                                                    \
+	int scale_x = 2;                                                                   \
+	int scale_y = 1;                                                                   \
+                                                                                       \
+	for (int i = 1; i <= max_depth; i++)                                               \
+	{                                                                                  \
+		width += scale_x;                                                              \
+		height += scale_y;                                                             \
+		scale_x *= 2;                                                                  \
+		scale_y *= 2;                                                                  \
+	}                                                                                  \
+	                                                                                   \
+	for (int i = 0; i < height; i++)                                                   \
+	{                                                                                  \
+		vec_str_push(canvas, calloc(width + 1, sizeof(char)));                         \
+		memset(canvas->data[i], ' ', width);                                           \
+	}                                                                                  \
+	                                                                                   \
+	draw_bstmap_##tag##_r(map->tree, max_depth, 0, 0, canvas);                         \
+                                                                                       \
+	size_t i = 0;                                                                      \
+	for (; i < canvas->size; i++)                                                      \
+	{                                                                                  \
+		int j = width - 1;                                                             \
+		for (; j >= 0 && canvas->data[i][j] == ' '; j--)                               \
+			canvas->data[i][j] = '\0';                                                 \
+		if (j == -1)                                                                   \
+		{                                                                              \
+			size_t size = canvas->size;                                                \
+			while (i < size)                                                           \
+			{                                                                          \
+				free(vec_str_pop(canvas));                                             \
+				i++;                                                                   \
+			}                                                                          \
+			break ;                                                                    \
+		}                                                                              \
+	}                                                                                  \
+                                                                                       \
+	return canvas;                                                                     \
+}                                                                                      \
+                                                                                       \
+static int _bstmap_##tag##_validate_r(BSTMap_##tag##_node *node)                       \
+{                                                                                      \
+	if (node == NULL)                                                                  \
+		return 1;                                                                      \
+                                                                                       \
+	if (node->col == RBT_RED)                                                          \
+	{                                                                                  \
+		if ((node->left != NULL && node->left->col == RBT_RED)                         \
+			|| (node->right != NULL && node->right->col == RBT_RED))                   \
+		{                                                                              \
+			dprintf(2, "RBT violation: multiple red nodes in a row\n");                \
+			return -1;                                                                 \
+		}                                                                              \
+	}                                                                                  \
+                                                                                       \
+	int left_height = _bstmap_##tag##_validate_r(node->left);                          \
+	int right_height = _bstmap_##tag##_validate_r(node->right);                        \
+                                                                                       \
+	if (left_height == -1 || right_height == -1                                        \
+		|| (left_height != right_height                                                \
+		&& dprintf(2, "RBT violation: black height mismatch\n"))                       \
+	)                                                                                  \
+		return -1;                                                                     \
+                                                                                       \
+	return (node->col == RBT_BLACK) ? left_height + 1 : left_height;                   \
+}                                                                                      \
+                                                                                       \
+static inline bool bstmap_##tag##_validate(BSTMap_##tag *map)                          \
+{                                                                                      \
+	if (map->tree == NULL)                                                             \
+		return true;                                                                   \
+                                                                                       \
+	if (map->tree->col != RBT_BLACK)                                                   \
+	{                                                                                  \
+		dprintf(2, "RBT violation: root node is not black\n");                         \
+		return false;                                                                  \
+	}                                                                                  \
+	                                                                                   \
+	return (_bstmap_##tag##_validate_r(map->tree) != -1);                              \
+}                                                                                      \
+                                                                                       \
+static void _bstmap_##tag##_print(BSTMap_##tag##_node *node, int space)                \
+{                                                                                      \
+    if (node == NULL) return;                                                          \
+    space += 8;                                                                        \
+    _bstmap_##tag##_print(node->right, space);                                         \
+	int i;                                                                             \
+    for (i = 8; i < space - 6; i++) printf(" ");                                       \
+    for (; i < space; i++) printf("-");                                                \
+    printf("%s%3d\e[m\n", node->col == RBT_RED ? "\e[41;30m" : "\e[47;30m", node->key);\
+    _bstmap_##tag##_print(node->left, space);                                          \
+}                                                                                      \
+                                                                                       \
+void	bstmap_##tag##_print_rb(BSTMap_##tag *map)                                     \
+{                                                                                      \
+	Vec_str *canvas = draw_bstmap_##tag(map);                                          \
+                                                                                       \
+	for (size_t i = 0; i < canvas->size; i++)                                          \
+	{                                                                                  \
+		for (int j = 0; canvas->data[i][j]; j++)                                       \
+		{                                                                              \
+			char c = canvas->data[i][j];                                               \
+			if (c == 'R')                                                              \
+				printf("\e[41;30m%c\e[m", c);                                          \
+			else if (c == 'B')                                                         \
+				printf("\e[47;30m%c\e[m", c);                                          \
+			else                                                                       \
+				printf("%c", c);                                                       \
+		}                                                                              \
+		printf("\n");                                                                  \
+	}                                                                                  \
+	vec_str_free(canvas, (void (*)(char *))free);                                      \
+}                                                                                      \
+                                                                                       \
+static inline BSTMap_##tag *bstmap_##tag##_init()                                      \
+{                                                                                      \
+	BSTMap_##tag *map = calloc(1, sizeof(*map));                                       \
+                                                                                       \
+	return map;                                                                        \
+}                                                                                      \
+                                                                                       \
+static inline BSTMap_##tag##_node *_bstmap_##tag##_min(BSTMap_##tag##_node *node)      \
+{                                                                                      \
+	while (node->left != NULL)                                                         \
+		node = node->left;                                                             \
+	return node;                                                                       \
+}                                                                                      \
+                                                                                       \
+static inline void _bstmap_##tag##_transplant(BSTMap_##tag *map,                       \
+												BSTMap_##tag##_node *dead,             \
+												BSTMap_##tag##_node *node)             \
+{                                                                                      \
+	if (dead->parent == NULL)                                                          \
+		map->tree = node;                                                              \
+	else if (dead == dead->parent->left)                                               \
+		dead->parent->left = node;                                                     \
+	else                                                                               \
+		dead->parent->right = node;                                                    \
+	if (node != NULL)                                                                  \
+		node->parent = dead->parent;                                                   \
+}                                                                                      \
+                                                                                       \
+static inline void _bstmap_##tag##_rotate_left(BSTMap_##tag *map,                      \
+												BSTMap_##tag##_node *node)             \
+{                                                                                      \
+	BSTMap_##tag##_node *right = node->right;                                          \
+                                                                                       \
+	node->right = right->left;                                                         \
+	if (right->left != NULL)                                                           \
+		right->left->parent = node;                                                    \
+                                                                                       \
+	right->parent = node->parent;                                                      \
+	if (node->parent == NULL)                                                          \
+		map->tree = right;                                                             \
+	else if (node == node->parent->left)                                               \
+		node->parent->left = right;                                                    \
+	else                                                                               \
+		node->parent->right = right;                                                   \
+                                                                                       \
+	right->left = node;                                                                \
+	node->parent = right;                                                              \
+}                                                                                      \
+                                                                                       \
+static inline void _bstmap_##tag##_rotate_right(BSTMap_##tag *map,                     \
+												BSTMap_##tag##_node *node)             \
+{                                                                                      \
+	BSTMap_##tag##_node *left = node->left;                                            \
+                                                                                       \
+	node->left = left->right;                                                          \
+	if (left->right != NULL)                                                           \
+		left->right->parent = node;                                                    \
+                                                                                       \
+	left->parent = node->parent;                                                       \
+	if (node->parent == NULL)                                                          \
+		map->tree = left;                                                              \
+	else if (node == node->parent->left)                                               \
+		node->parent->left = left;                                                     \
+	else                                                                               \
+		node->parent->right = left;                                                    \
+                                                                                       \
+	left->right = node;                                                                \
+	node->parent = left;                                                               \
+}                                                                                      \
+                                                                                       \
+/* static inline void print_bstmap_##tag(BSTMap_##tag *map) */                         \
+                                                                                       \
+static inline void _bstmap_##tag##_balance_insert(BSTMap_##tag *map,                   \
+													BSTMap_##tag##_node *node)         \
+{                                                                                      \
+	while (node->parent != NULL && node->parent->col == RBT_RED)                       \
+	{                                                                                  \
+		if (node->parent == node->parent->parent->left)                                \
+		{                                                                              \
+			BSTMap_##tag##_node *uncle = node->parent->parent->right;                  \
+			if (uncle != NULL && uncle->col == RBT_RED)                                \
+			{                                                                          \
+				node->parent->col = RBT_BLACK;                                         \
+				uncle->col = RBT_BLACK;                                                \
+				node->parent->parent->col = RBT_RED;                                   \
+				node = node->parent->parent;                                           \
+			}                                                                          \
+			else                                                                       \
+			{                                                                          \
+				if (node == node->parent->right)                                       \
+				{                                                                      \
+					node = node->parent;                                               \
+					_bstmap_##tag##_rotate_left(map, node);                            \
+				}                                                                      \
+				node->parent->col = RBT_BLACK;                                         \
+				node->parent->parent->col = RBT_RED;                                   \
+				_bstmap_##tag##_rotate_right(map, node->parent->parent);               \
+			}                                                                          \
+		}                                                                              \
+		else                                                                           \
+		{                                                                              \
+			BSTMap_##tag##_node *uncle = node->parent->parent->left;                   \
+			if (uncle != NULL && uncle->col == RBT_RED)                                \
+			{                                                                          \
+				node->parent->col = RBT_BLACK;                                         \
+				uncle->col = RBT_BLACK;                                                \
+				node->parent->parent->col = RBT_RED;                                   \
+				node = node->parent->parent;                                           \
+			}                                                                          \
+			else                                                                       \
+			{                                                                          \
+				if (node == node->parent->left)                                        \
+				{                                                                      \
+					node = node->parent;                                               \
+					_bstmap_##tag##_rotate_right(map, node);                           \
+				}                                                                      \
+				node->parent->col = RBT_BLACK;                                         \
+				node->parent->parent->col = RBT_RED;                                   \
+				_bstmap_##tag##_rotate_left(map, node->parent->parent);                \
+			}                                                                          \
+		}                                                                              \
+	}                                                                                  \
+	map->tree->col = RBT_BLACK;                                                        \
+}                                                                                      \
+                                                                                       \
+static inline int bstmap_##tag##_insert(BSTMap_##tag *map, K key, V val)               \
+{                                                                                      \
+	BSTMap_##tag##_node *current = map->tree;                                          \
+	BSTMap_##tag##_node *parent = NULL;                                                \
+	int (*cmpf)(K, K) = (int (*)(K, K))cmp;                                            \
+	int	diff = 0;                                                                      \
+                                                                                       \
+	while (current != NULL)                                                            \
+	{                                                                                  \
+		parent = current;                                                              \
+		diff = (cmpf == NULL)                                                          \
+			? SAFE_CMP(key, current->key)                                              \
+			: cmpf(key, current->key);                                                 \
+		if (diff > 0)                                                                  \
+			current = current->right;                                                  \
+		else if (diff < 0)                                                             \
+			current = current->left;                                                   \
+		else                                                                           \
+			return 1;                                                                  \
+	}                                                                                  \
+                                                                                       \
+	BSTMap_##tag##_node *new = calloc(1, sizeof(*new));                                \
+	new->key = key;                                                                    \
+	new->val = val;                                                                    \
+	new->parent = parent;                                                              \
+	if (parent == NULL)                                                                \
+		map->tree = new;                                                               \
+	else if (diff > 0)                                                                 \
+		parent->right = new;                                                           \
+	else                                                                               \
+		parent->left = new;                                                            \
+	map->size++;                                                                       \
+                                                                                       \
+	/* printf("\e[?25l");                                                                 \
+	printf("\e[2J\e[H");                                                               \
+	bstmap_##tag##_print_rb(map);                                                      \
+	getchar(); */                                                                         \
+	_bstmap_##tag##_balance_insert(map, new);                                          \
+	/* printf("\e[2J\e[H");                                                               \
+	bstmap_##tag##_print_rb(map);                                                      \
+	getchar();                                                                         \
+	printf("\e[?25h"); */                                                                \
+	                                                                                   \
+	return 0;                                                                          \
+}                                                                                      \
+                                                                                       \
+static inline void _bstmap_##tag##_remove_fix(BSTMap_##tag *map,                       \
+												BSTMap_##tag##_node *node,             \
+												BSTMap_##tag##_node *parent)           \
+{                                                                                      \
+	while (node != map->tree && (node == NULL || node->col == RBT_BLACK))              \
+	{                                                                                  \
+		if (node == parent->left)                                                      \
+		{                                                                              \
+			BSTMap_##tag##_node *sibling = parent->right;                              \
+			if (sibling == NULL)                                                       \
+			{                                                                          \
+				node = parent;                                                         \
+				parent = node->parent;                                                 \
+				continue ;                                                             \
+			}                                                                          \
+			if (sibling->col == RBT_RED)                                               \
+			{                                                                          \
+				sibling->col = RBT_BLACK;                                              \
+				parent->col = RBT_RED;                                                 \
+				_bstmap_##tag##_rotate_left(map, parent);                              \
+				sibling = parent->right;                                               \
+				if (sibling == NULL)                                                   \
+				{                                                                      \
+					node = parent;                                                     \
+					parent = node->parent;                                             \
+					continue ;                                                         \
+				}                                                                      \
+			}                                                                          \
+                                                                                       \
+			bool left_black = sibling->left == NULL || sibling->left->col == RBT_BLACK;\
+			bool right_black = sibling->right == NULL || sibling->right->col == RBT_BLACK;\
+                                                                                       \
+			if (left_black && right_black)                                             \
+			{                                                                          \
+				sibling->col = RBT_RED;                                                \
+				node = parent;                                                         \
+				parent = node->parent;                                                 \
+			}                                                                          \
+			else                                                                       \
+			{                                                                          \
+				if (right_black)                                                       \
+				{                                                                      \
+					if (sibling->left != NULL)                                         \
+						sibling->left->col = RBT_BLACK;                                \
+					sibling->col = RBT_RED;                                            \
+					_bstmap_##tag##_rotate_right(map, sibling);                        \
+					sibling = parent->right;                                           \
+				}                                                                      \
+				sibling->col = parent->col;                                            \
+				parent->col = RBT_BLACK;                                               \
+				if (sibling->right != NULL)                                            \
+					sibling->right->col = RBT_BLACK;                                   \
+				_bstmap_##tag##_rotate_left(map, parent);                              \
+				node = map->tree;                                                      \
+			}                                                                          \
+		}                                                                              \
+		else                                                                           \
+		{                                                                              \
+			BSTMap_##tag##_node *sibling = parent->left;                               \
+			if (sibling == NULL)                                                       \
+			{                                                                          \
+				node = parent;                                                         \
+				parent = node->parent;                                                 \
+				continue ;                                                             \
+			}                                                                          \
+			if (sibling->col == RBT_RED)                                               \
+			{                                                                          \
+				sibling->col = RBT_BLACK;                                              \
+				parent->col = RBT_RED;                                                 \
+				_bstmap_##tag##_rotate_right(map, parent);                             \
+				sibling = parent->left;                                                \
+				if (sibling == NULL)                                                   \
+				{                                                                      \
+					node = parent;                                                     \
+					parent = node->parent;                                             \
+					continue ;                                                         \
+				}                                                                      \
+			}                                                                          \
+                                                                                       \
+			bool left_black = sibling->left == NULL || sibling->left->col == RBT_BLACK;\
+			bool right_black = sibling->right == NULL || sibling->right->col == RBT_BLACK;\
+                                                                                       \
+			if (left_black && right_black)                                             \
+			{                                                                          \
+				sibling->col = RBT_RED;                                                \
+				node = parent;                                                         \
+				parent = node->parent;                                                 \
+			}                                                                          \
+			else                                                                       \
+			{                                                                          \
+				if (left_black)                                                        \
+				{                                                                      \
+					if (sibling->right != NULL)                                        \
+						sibling->right->col = RBT_BLACK;                               \
+					sibling->col = RBT_RED;                                            \
+					_bstmap_##tag##_rotate_left(map, sibling);                         \
+					sibling = parent->left;                                            \
+				}                                                                      \
+				sibling->col = parent->col;                                            \
+				parent->col = RBT_BLACK;                                               \
+				if (sibling->left != NULL)                                             \
+					sibling->left->col = RBT_BLACK;                                    \
+				_bstmap_##tag##_rotate_right(map, parent);                             \
+				node = map->tree;                                                      \
+			}                                                                          \
+		}                                                                              \
+	}                                                                                  \
+	if (node != NULL)                                                                  \
+		node->col = RBT_BLACK;                                                         \
+}                                                                                      \
+                                                                                       \
+static inline int bstmap_##tag##_remove(BSTMap_##tag *map, K key, void (*del)(K))      \
+{                                                                                      \
+	BSTMap_##tag##_node *target = map->tree;                                           \
+	int (*cmpf)(K, K) = (int (*)(K, K))cmp;                                            \
+	while (target != NULL)                                                             \
+	{                                                                                  \
+		int diff = (cmpf == NULL)                                                      \
+			? SAFE_CMP(key, target->key)                                               \
+			: cmpf(key, target->key);                                                  \
+		if (diff == 0)                                                                 \
+			break ;                                                                    \
+		target = diff < 0 ? target->left : target->right;                              \
+	}                                                                                  \
+	if (target == NULL)                                                                \
+		return 1;                                                                      \
+                                                                                       \
+	BSTMap_##tag##_node *replacement = NULL;                                           \
+	BSTMap_##tag##_node *to_fix = NULL;                                                \
+	BSTMap_##tag##_node *fix_parent;                                                   \
+	RBTColor orig_col = target->col;                                                   \
+                                                                                       \
+	if (target->left == NULL)                                                          \
+	{                                                                                  \
+		to_fix = target->right;                                                        \
+		fix_parent = target->parent;                                                   \
+		_bstmap_##tag##_transplant(map, target, target->right);                        \
+	}                                                                                  \
+	else if (target->right == NULL)                                                    \
+	{                                                                                  \
+		to_fix = target->left;                                                         \
+		fix_parent = target->parent;                                                   \
+		_bstmap_##tag##_transplant(map, target, target->left);                         \
+	}                                                                                  \
+	else                                                                               \
+	{                                                                                  \
+		replacement = _bstmap_##tag##_min(target->right);                              \
+		orig_col = replacement->col;                                                   \
+		to_fix = replacement->right;                                                   \
+                                                                                       \
+		if (replacement->parent == target)                                             \
+		{                                                                              \
+			fix_parent = replacement;                                                  \
+		}                                                                              \
+		else                                                                           \
+		{                                                                              \
+			fix_parent = replacement->parent;                                          \
+			_bstmap_##tag##_transplant(map, replacement, replacement->right);          \
+			replacement->right = target->right;                                        \
+			replacement->right->parent = replacement;                                  \
+		}                                                                              \
+		_bstmap_##tag##_transplant(map, target, replacement);                          \
+		replacement->left = target->left;                                              \
+		replacement->left->parent = replacement;                                       \
+		replacement->col = target->col;                                                \
+	}                                                                                  \
+                                                                                       \
+	if (orig_col == RBT_BLACK)                                                         \
+		_bstmap_##tag##_remove_fix(map, to_fix, fix_parent);                           \
+                                                                                       \
+	if (map->tree != NULL)                                                             \
+		map->tree->col = RBT_BLACK;                                                    \
+                                                                                       \
+    if (del != NULL)                                                                   \
+		del(target->key);                                                              \
+	free(target);                                                                      \
+	map->size--;                                                                       \
+	return 0;                                                                          \
+}                                                                                      \
+                                                                                       \
+static inline bool bstmap_##tag##_contains(BSTMap_##tag *map, K key)                   \
+{                                                                                      \
+	BSTMap_##tag##_node *current = map->tree;                                          \
+	int (*cmpf)(K, K) = (int (*)(K, K))cmp;                                            \
+                                                                                       \
+	while (current != NULL)                                                            \
+	{                                                                                  \
+		int diff = (cmpf == NULL)                                                      \
+			? SAFE_CMP(key, current->key)                                              \
+			: cmpf(key, current->key);                                                 \
+		if (diff > 0)                                                                  \
+			current = current->right;                                                  \
+		else if (diff < 0)                                                             \
+			current = current->left;                                                   \
+		else                                                                           \
+			return true;                                                               \
+	}                                                                                  \
+                                                                                       \
+	return false;                                                                      \
+}                                                                                      \
+                                                                                       \
+static void _bstmap_##tag##_clear_r(BSTMap_##tag##_node *node, void (*del)(K))         \
+{                                                                                      \
+	if (node == NULL)                                                                  \
+		return ;                                                                       \
+	_bstmap_##tag##_clear_r(node->left, del);                                          \
+	_bstmap_##tag##_clear_r(node->right, del);                                         \
+	if (del != NULL)                                                                   \
+		del(node->key);                                                                \
+	free(node);                                                                        \
+}                                                                                      \
+                                                                                       \
+static inline void bstmap_##tag##_clear(BSTMap_##tag *map, void (*del)(K))             \
+{                                                                                      \
+	_bstmap_##tag##_clear_r(map->tree, del);                                           \
+	map->tree = NULL;                                                                  \
+	map->size = 0;                                                                     \
+}                                                                                      \
+
+
+#define FS_DECLARE_HASHMAP(T, tag, hash_func)                                          \
+                                                                                       \
+typedef struct HashMap_##tag##_node                                                    \
+{                                                                                      \
+    T		data;                                                                      \
+	struct HashMap_##tag##_node *next;                                                 \
+} Vec_##tag;                                                                           \
+                                                                                       \
+typedef struct HashMap_##tag                                                           \
+{                                                                                      \
+    T		*data;                                                                     \
+    size_t	size;                                                                      \
+    size_t	capacity;                                                                  \
+} Vec_##tag;                                                                           \
 
 
 #endif // _FSLIB_H

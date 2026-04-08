@@ -1,6 +1,6 @@
 CC = gcc
 
-CFLAGS = -Wall -Wextra -O0
+CFLAGS = -Wall -Wextra -O3
 
 DBG_FLAGS =		-g3 \
 				-D DEBUG \
